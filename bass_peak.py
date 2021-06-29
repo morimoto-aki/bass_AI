@@ -1,58 +1,63 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import wave
-import warnings
+from scipy import signal
 
-warnings.simplefilter('ignore', category=RuntimeWarning)  # RuntimeWarningを無視扱いに設定
+samplerate = 44100 #サンプリングレート
+Fs = 4096 #フレームサイズ
+overlap = 50 #オーバーラップ率
 
-def ReadWavFile(FileName = "./output/bass.wav"):
-    """
-    wavファイルを読み込み、配列として返す
-    """
-    try:
-        wr = wave.open(FileName, "r")
-    except FileNotFoundError: #ファイルが存在しなかった場合
-        print("[Error 404] No such file or directory: " + FileName)
-        return 0
-    data = wr.readframes(wr.getnframes())
-    wr.close()
-    x = np.frombuffer(data, dtype="int16") / float(2**15)
-    return x
+#オーディオファイル読み込み
+def ReadWav(Filename):
+    wf = wave.open(Filename,"r")
+    buf= wf.readframes(wf.getnframes())
+    
+    data = np.frombuffer(buf, dtype="int16")
+    
+    return data
+
+#オーバラップ処理
+def OverLap(data, samplerate, Fs, overlap):
+    Ts = len(data) / samplerate
+    Fc = Fs / samplerate
+    x_ol = Fs * (1 - (overlap/100))
+    N_ave = int((Ts - (Fc * (overlap/100))) / (Fc * (1-(overlap/100))))
+ 
+    array = []
+ 
+    for i in range(N_ave):
+        ps = int(x_ol * i)
+        array.append(data[ps:ps+Fs:1])
+    return array, N_ave #波形の配列データarray、平均化回数（＝分割数）N_ave
+
+# 窓関数処理（ハニング窓）
+def hanning(data_array, Fs, N_ave):
+    han = signal.hann(Fs)# ハニング窓作成
+    print(type(han))
+    print(han)
+    acf = 1 / (sum(han) / Fs)# 振幅補正係数(Amplitude Correction Factor)
+    
+    # オーバーラップされた複数時間波形全てに窓関数をかける
+    for i in range(N_ave):
+        data_array[i] = data_array[i] * han[i]        # 窓関数をかける
+
+    return data_array, acf
 
 
-sampling_rate = 44100 #サンプリングレート
-data = np.array(ReadWavFile("./output/bass.wav")) #wavデータを配列で保存
+data = ReadWav("./output/basscut1.wav")
+data_ol, N_ave = OverLap(data, samplerate, Fs, overlap)
+t = np.arange(0, Fs)/samplerate
 
-NFFT = 1024 # フレームの大きさ
-OVERLAP = NFFT / 2 # 窓をずらした時のフレームの重なり具合. half shiftが一般的らしい
-frame_length = data.shape[0] #全フレーム数
-split_number = len(np.arange((NFFT / 2), frame_length, (NFFT - OVERLAP))) #楽曲の分割数
+# ハニング窓関数をかける
+time_array, acf = hanning(data, Fs, N_ave)
 
-window = np.hamming(NFFT)  #窓関数
+# 軸のラベルを設定する。
+plt.xlabel('Time [s]')
+plt.ylabel('Signal [V]')
 
-spec = np.zeros([split_number, NFFT // 4]) #転置状態で定義初期化
+print(N_ave)
+# データのラベルと線の太さ、凡例の設置を行う。
+for j in range(N_ave):
+    plt.plot(t, data_ol[j], label='Ch.1', lw=1)
 
-pos = 0
-
-for fft_index in range(split_number):
-    frame = data[int(pos):int(pos+NFFT)]
-    if len(frame) == NFFT:
-        windowed = window * frame  #窓関数をかける
-        fft_result = np.fft.rfft(windowed)
-         # real()関数で虚部を削除して、さらに高周波をカット（複素共役による鏡像のため不要）
-        fft_data2 = np.real(fft_result[:int(len(fft_result)/2)]) 
-        fft_data2 = np.log(fft_data2** 2)  # グラフで見やすくするために対数をとります
-
-        for i in range(len(spec[fft_index])):
-            spec[fft_index][-i-1] = fft_data2[i]
-
-        pos += (NFFT - OVERLAP) #窓をずらす
-
-# プロット
-plt.imshow(spec.T, extent=[0, frame_length, 0, sampling_rate/2], aspect="auto")
-plt.xlabel("time[s]")
-plt.ylabel("frequency[Hz]")
-plt.colorbar()
-plt.ylim(0,10000)
 plt.show()
-
