@@ -122,8 +122,15 @@ def findpeaks_2d(fft_array, dt, df, num_peaks, w, max_peaks):
 
     return freq_index_sort[:max_peaks], freq_peaks_sort[:max_peaks], time_index_sort[:max_peaks]
 
-path = './output/basscut1.wav'                         #ファイルパスを指定
-data, samplerate = sf.read(path)            #wavファイルを読み込む
+path = './output/bassMIDI_1.wav'                         #ファイルパスを指定
+data, samplerate = sf.read(path) #wavファイルを読み込む
+
+#ステレオ2chの場合、LchとRchに分割
+data_l = data[:, 0]
+data_r = data[:, 1]
+#入力をモノラル化
+data = (0.5 * data_l) + (0.5 * data_r)
+
 x = np.arange(0, len(data)) / samplerate    #波形生成のための時間軸の作成
 
 # Fsとoverlapでスペクトログラムの分解能を調整する。
@@ -141,7 +148,7 @@ fft_array, fft_mean, fft_axis = fft_ave(time_array, samplerate, Fs, N_ave, acf)
 
 # ピーク検出する
 spec_dt = final_time / N_ave
-freq_index, freq_peaks, time_index = findpeaks_2d(fft_array, spec_dt, fft_axis[1], num_peaks=100, w=10, max_peaks=50)
+freq_index, freq_peaks, time_index = findpeaks_2d(fft_array, spec_dt, fft_axis[1], num_peaks=1, w=1000, max_peaks=500)
 
 print(freq_peaks)
 print(freq_index)
